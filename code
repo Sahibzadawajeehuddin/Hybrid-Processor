@@ -1,0 +1,83 @@
+module HybridProcessor #(parameter NUM_CORES = 4, DATA_WIDTH = 32) (
+    input clk, reset,
+    input [DATA_WIDTH-1:0] task_in,
+    input task_type,  // 0 = Serial, 1 = Parallel
+    output reg [DATA_WIDTH-1:0] result_out
+);
+
+    // Control Unit - Task Dispatcher
+    reg [DATA_WIDTH-1:0] serial_task, parallel_tasks [NUM_CORES-1:0];
+    reg serial_task_valid, parallel_task_valid [NUM_CORES-1:0];
+    wire [DATA_WIDTH-1:0] serial_result, parallel_results [NUM_CORES-1:0];
+
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            serial_task_valid <= 0;
+            for (int i = 0; i < NUM_CORES; i = i + 1) parallel_task_valid[i] <= 0;
+        end else begin
+            if (task_type == 0) begin  // Serial Task
+                serial_task <= task_in;
+                serial_task_valid <= 1;
+            end else begin  // Parallel Tasks
+                for (int i = 0; i < NUM_CORES; i = i + 1) begin
+                    parallel_tasks[i] <= task_in + i; // Example distribution
+                    parallel_task_valid[i] <= 1;
+                end
+            end
+        end
+    end
+
+    // Serial Processing Unit
+    SerialProcessingUnit spu (
+        .clk(clk), .reset(reset),
+        .task_in(serial_task), .valid(serial_task_valid),
+        .result_out(serial_result)
+    );
+
+    // Parallel Processing Cores
+    genvar i;
+    generate
+        for (i = 0; i < NUM_CORES; i = i + 1) begin : PPC
+            ParallelProcessingCore ppc (
+                .clk(clk), .reset(reset),
+                .task_in(parallel_tasks[i]), .valid(parallel_task_valid[i]),
+                .result_out(parallel_results[i])
+            );
+        end
+    endgenerate
+
+    // Synchronization & Output Selection
+    always @(posedge clk) begin
+        if (serial_task_valid) begin
+            result_out <= serial_result;
+        end else begin
+            result_out <= parallel_results[0]; // Example: selecting first core’s result
+        end
+    end
+endmodule
+
+// Serial Processing Unit
+module SerialProcessingUnit #(parameter DATA_WIDTH = 32) (
+    input clk, reset,
+    input [DATA_WIDTH-1:0] task_in,
+    input valid,
+    output reg [DATA_WIDTH-1:0] result_out
+);
+    always @(posedge clk or posedge reset) begin
+        if (reset) result_out <= 0;
+        else if (valid) result_out <= task_in + 1; // Example operation
+    end
+endmodule
+
+// Parallel Processing Core
+module ParallelProcessingCore #(parameter DATA_WIDTH = 32) (
+    input clk, reset,
+    input [DATA_WIDTH-1:0] task_in,
+    input valid,
+    output reg [DATA_WIDTH-1:0] result_out
+);
+    always @(posedge clk or posedge reset) begin
+        if (reset) result_out <= 0;
+        else if (valid) result_out <= task_in * 2; // Example operation
+    end
+endmodule
